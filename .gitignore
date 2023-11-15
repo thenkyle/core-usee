@@ -1,0 +1,8 @@
+## idea
+.idea/*.xml
+## vscode
+.vscode
+
+target/
+volumes/
+src/test/java/com/thsrc/milvus/*
