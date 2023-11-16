@@ -1,13 +1,16 @@
 package com.thsrc.milvus.utils;
 
+import org.springframework.stereotype.Component;
+
 /**
  * @author kylelin
  */
+@Component
 public class PushMaterialConfig {
     /**
      * Collection名稱
      */
-    public static final String COLLECTION_NAME = "book";
+    public static final String COLLECTION_NAME = "case";
     /**
     *  Partition名稱
     * */
@@ -17,19 +20,19 @@ public class PushMaterialConfig {
      */
 //    public static final Integer SHARDS_NUM = 8;
     /**
-     * 分区数量
+     * Partition數量
      */
 //    public static final Integer PARTITION_NUM = 16;
 
     /**
-     * 分区前缀
+     * Partition前缀
      */
 //    public static final String PARTITION_PREFIX = "shards_";
     /**
-     * 特征值长度
+     * 特征值長度
      */
     public static final Integer FEATURE_DIM = 256;
-    public static final String DESCRIPTION = "Test book search";
+    public static final String DESCRIPTION = "Test search";
 
     /**
      * 欄位
@@ -38,15 +41,18 @@ public class PushMaterialConfig {
         /**
          * PK
          */
-        public static final String BOOK_ID = "book_id";
+        public static final String CASE_ID = "case_id";
         /**
          * 字數欄位
          */
-        public static final String WORK_COUNT = "word_count";
+        public static final String ACTION = "action";
+        public static final String DEPARTRUE_ARRIVE = "departure_Arrive";
+        public static final String PROFILE = "profile";
+
         /**
          * Vector
          */
-        public static final String BOOK_INTRO = "book_intro";
+        public static final String CASE_VECTOR = "case_vector";
     }
 
 

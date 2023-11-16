@@ -48,7 +48,7 @@ services:
 
   attu:
     container_name: attu
-    image: zilliz/attu:v2.2.7
+    image: zilliz/attu
     environment:
       MILVUS_URL: milvus-standalone:19530
     ports:
