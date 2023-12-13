@@ -46,7 +46,8 @@ public class PushMaterialConfig {
          * 字數欄位
          */
         public static final String ACTION = "action";
-        public static final String DEPARTRUE_ARRIVE = "departure_Arrive";
+        public static final String DEPARTURE_STATION = "departure_station";
+        public static final String ARRIVAL_STATION = "arrival_station";
         public static final String PROFILE = "profile";
 
         /**

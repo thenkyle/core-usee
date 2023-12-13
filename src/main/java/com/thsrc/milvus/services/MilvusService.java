@@ -28,27 +28,28 @@ import java.util.*;
 
 @Service
 public class MilvusService {
-    private final MilvusClient milvusClient;
-
+    private final MilvusServiceClient milvusServiceClient;
+    private final VectorizationService vectorizationSvc;
     Logger logger = LogManager.getLogger(getClass());
 
     static final IndexType INDEX_TYPE = IndexType.IVF_FLAT;
     static final String INDEX_PARAM = "{\"nlist\":1024}";
     private static final String[] ACTION = {"createPNR", "modifyPNR", "payment" };
-    private static final String[] STATIONS = {"NAK", "TPE", "BAC", "TAY", "HSC", "MIL", "TAC", "CHA", "TUL", "CHY", "TNN", "ZUY", "PTN"};
+    private static final String[] STATIONS = {"NAK", "TPE", "BAC", "TAY", "HSC", "MIL", "TAC", "CHA", "YUL", "CHY", "TNN", "ZUY"};
     private static final String[] PROFILES = {"F", "H", "E", "W", "P", "T", "S", "M"};
 
 
     @Autowired
-    public MilvusService(MilvusClient milvusClient) {
-        this.milvusClient = milvusClient;
+    public MilvusService(MilvusServiceClient milvusClient, VectorizationService vectorizationSvc) {
+        this.milvusServiceClient = milvusClient;
+        this.vectorizationSvc = vectorizationSvc;
     }
 
     /** 初始化Milvus*/
     public void initializeMilvus() {
         CreateCollectionParam createCollectionReq = this.createCollectionReq();
         CreatePartitionParam createPartitionReq = this.createPartitionReq();
-        R<Boolean> respHasCollection = milvusClient.hasCollection(
+        R<Boolean> respHasCollection = this.milvusServiceClient.hasCollection(
                 HasCollectionParam.newBuilder()
                         .withCollectionName(PushMaterialConfig.COLLECTION_NAME)
                         .build()
@@ -63,16 +64,16 @@ public class MilvusService {
     }
 
     public void insertData() {
-        insertData((MilvusServiceClient) milvusClient);
+        insertData((MilvusServiceClient) milvusServiceClient);
     }
 
     @Async
     public void buildIndex() {
-        buildIndex((MilvusServiceClient) milvusClient);
+        buildIndex((MilvusServiceClient) milvusServiceClient);
     }
     @Async
     public void loadCollection() {
-        loadCollection((MilvusServiceClient) milvusClient);
+        loadCollection((MilvusServiceClient) milvusServiceClient);
     }
 
     public void search() {
@@ -91,12 +92,12 @@ public class MilvusService {
                 .withParams(SEARCH_PARAM)
                 .build();
 
-        R<SearchResults> respSearch = milvusClient.search(searchParam);
+        R<SearchResults> respSearch = milvusServiceClient.search(searchParam);
         SearchResultsWrapper wrapperSearch = new SearchResultsWrapper(respSearch.getData().getResults());
         System.out.println("wrapperSearch.getIDScore" + wrapperSearch.getIDScore(0));
         System.out.println("wrapperSearch.getFieldData" + wrapperSearch.getFieldData(PushMaterialConfig.Field.CASE_ID, 0));
         // 釋放Collection
-//        milvusClient.releaseCollection(
+//        milvusServiceClient.releaseCollection(
 //                ReleaseCollectionParam.newBuilder()
 //                        .withCollectionName(PushMaterialConfig.COLLECTION_NAME)
 //                        .build());
@@ -117,17 +118,21 @@ public class MilvusService {
 
                 .build();
         FieldType fieldType3 = FieldType.newBuilder()
-                .withName(PushMaterialConfig.Field.DEPARTRUE_ARRIVE)
+                .withName(PushMaterialConfig.Field.DEPARTURE_STATION)
                 .withDataType(DataType.VarChar).withMaxLength(21)
                 .build();
         FieldType fieldType4 = FieldType.newBuilder()
-                .withName(PushMaterialConfig.Field.PROFILE)
+                .withName(PushMaterialConfig.Field.ARRIVAL_STATION)
                 .withDataType(DataType.VarChar).withMaxLength(21)
                 .build();
         FieldType fieldType5 = FieldType.newBuilder()
+                .withName(PushMaterialConfig.Field.PROFILE)
+                .withDataType(DataType.VarChar).withMaxLength(21)
+                .build();
+        FieldType fieldType6 = FieldType.newBuilder()
                 .withName(PushMaterialConfig.Field.CASE_VECTOR)
                 .withDataType(DataType.FloatVector)
-                .withDimension(3)
+                .withDimension(400)
                 .build();
 
         CreateCollectionParam createCollectionReq = CreateCollectionParam.newBuilder()
@@ -139,6 +144,7 @@ public class MilvusService {
                 .addFieldType(fieldType3)
                 .addFieldType(fieldType4)
                 .addFieldType(fieldType5)
+                .addFieldType(fieldType6)
                 .build();
 
         return createCollectionReq;
@@ -154,49 +160,74 @@ public class MilvusService {
     }
     /**產生一個Collection*/
     private void createCollection(CreateCollectionParam createCollectionReq) {
-    milvusClient.createCollection(createCollectionReq);
+    milvusServiceClient.createCollection(createCollectionReq);
         System.out.println("Create Collection Complete.");
     }
     /**產生一個Partition*/
     private void createPartition(CreatePartitionParam createPartitionParamReq){
-        milvusClient.createPartition(createPartitionParamReq);
+        milvusServiceClient.createPartition(createPartitionParamReq);
         System.out.println("Create Partition Complete.");
     }
 
-    private void insertData(MilvusServiceClient milvusClient) {
+    private void insertData(MilvusServiceClient milvusServiceClient) {
         Random ran = new Random();
         List<Long> case_id_array = new ArrayList<>();
         List<String> action_array = new ArrayList<>();
-        List<String> departure_arrive_array = new ArrayList<>(); // 新增 departure_arrive 字段
+        List<String> departure_array = new ArrayList<>();
+        List<String> arrival_array = new ArrayList<>();
         List<String> profile_array = new ArrayList<>();
         List<List<Float>> case_vector_array = new ArrayList<>();
+//        List<float[]> combined_vector_array = new ArrayList<>();
 
         // 生成所有可能的 departure_arrive 組合
-        List<String> stationCombinations = generateCombinations(STATIONS);
+        Map<String, List<String>> combinations = generateCombinations(STATIONS);
         List<String> profileCombinations = generateRandomProfiles(PROFILES);
 
+        int index = 0;
         for (long i = 0L; i < 10; ++i) {
             case_id_array.add(i);
             // 隨機選擇一個 action
             String action = ACTION[ran.nextInt(ACTION.length)];
             action_array.add(action);
-            // 隨機選擇一個 departure_arrive 組合
-            String departureArrive = stationCombinations.get(ran.nextInt(stationCombinations.size()));
-            departure_arrive_array.add(departureArrive);
+            // 隨機選擇一個 departure、arrive 組合
+            String departureStation = combinations.get("departure").get(index);
+            departure_array.add(departureStation);
+            String arrivalStation = combinations.get("arrival").get(index);
+            arrival_array.add(arrivalStation);
+            // 隨機選擇一個 profile 組合
             String profiles = profileCombinations.get(ran.nextInt(profileCombinations.size()));
             profile_array.add(profiles);
 
-            List<Float> vector = new ArrayList<>();
-            for (int k = 0; k < 3; ++k) {
-                vector.add(ran.nextFloat());
-            }
-            case_vector_array.add(vector);
+            System.out.print("該筆資料："+action+",");
+            System.out.print(departureStation+",");
+            System.out.print(arrivalStation+",");
+            System.out.println(profiles);
+
+            // 使用 VectorizationService 計算向量
+            float[] actionVector = vectorizationSvc.getFieldVector(action);
+            float[] departureVector = vectorizationSvc.getFieldVector(departureStation);
+            float[] arrivalVector = vectorizationSvc.getFieldVector(arrivalStation);
+            float[] profileVector = vectorizationSvc.getFieldVector(profiles);
+
+
+            // 將4個向量合併為一個
+            float[] combinedVector = combineVectors(actionVector, departureVector, arrivalVector, profileVector);
+            // 將合併的向量轉換為 List<Float> 並添加到 case_vector_array
+            case_vector_array.add(convertArrayToList(combinedVector));
+//            List<Float> vector = new ArrayList<>();
+//            for (int k = 0; k < 3; ++k) {
+//                vector.add(ran.nextFloat());
+//            }
+//            System.out.println("vector:"+vector);
+//            case_vector_array.add(vector);
+            index++;
         }
 
         List<InsertParam.Field> fields = new ArrayList<>();
         fields.add(new InsertParam.Field(PushMaterialConfig.Field.CASE_ID,  case_id_array));
         fields.add(new InsertParam.Field(PushMaterialConfig.Field.ACTION, action_array));
-        fields.add(new InsertParam.Field(PushMaterialConfig.Field.DEPARTRUE_ARRIVE, departure_arrive_array));
+        fields.add(new InsertParam.Field(PushMaterialConfig.Field.DEPARTURE_STATION, departure_array));
+        fields.add(new InsertParam.Field(PushMaterialConfig.Field.ARRIVAL_STATION, arrival_array));
         fields.add(new InsertParam.Field(PushMaterialConfig.Field.PROFILE, profile_array));
         fields.add(new InsertParam.Field(PushMaterialConfig.Field.CASE_VECTOR, case_vector_array));
 
@@ -206,23 +237,27 @@ public class MilvusService {
                 .withFields(fields)
                 .build();
         logger.info(insertParam);
-        milvusClient.insert(insertParam);
+        milvusServiceClient.insert(insertParam);
         System.out.println("Insert Data Complete.");
 
     }
     /** 隨機產生departure_arrive站組合*/
-    private List<String> generateCombinations(String[] stations) {
-        List<String> combinations = new ArrayList<>();
-
+    private Map<String, List<String>> generateCombinations(String[] stations) {
+        Map<String, List<String>> stationMap = new HashMap<>();
         for (int i = 0; i < stations.length - 1; i++) {
             for (int j = i + 1; j < stations.length; j++) {
-                String combination = stations[i] + stations[j];
-                combinations.add(combination);
+                String departureStation = stations[i];
+                String arrivalStation = stations[j];
+                // 將 departureStation 加到對應的 List 中，如果不存在則創建一個新的 List
+                stationMap.computeIfAbsent("departure", k -> new ArrayList<>()).add(departureStation);
+
+                // 將 arrivalStation 加到對應的 List 中，如果不存在則創建一個新的 List
+                stationMap.computeIfAbsent("arrival", k -> new ArrayList<>()).add(arrivalStation);
             }
         }
-
-        return combinations;
+        return stationMap;
     }
+
     /** 隨機生成profile組合*/
     private static List<String> generateRandomProfiles(String[] count) {
         Random random = new Random();
@@ -240,8 +275,8 @@ public class MilvusService {
         return profiles;
     }
 
-    private void buildIndex(MilvusServiceClient milvusClient) {
-        milvusClient.createIndex(
+    private void buildIndex(MilvusServiceClient milvusServiceClient) {
+        milvusServiceClient.createIndex(
                 CreateIndexParam.newBuilder()
                         .withCollectionName(PushMaterialConfig.COLLECTION_NAME)
                         .withFieldName(PushMaterialConfig.Field.CASE_VECTOR)
@@ -256,8 +291,8 @@ public class MilvusService {
     }
 
     /**載入Collection*/
-    private void loadCollection(MilvusServiceClient milvusClient) {
-        milvusClient.loadCollection(
+    private void loadCollection(MilvusServiceClient milvusServiceClient) {
+        milvusServiceClient.loadCollection(
                 LoadCollectionParam.newBuilder()
                         .withCollectionName(PushMaterialConfig.COLLECTION_NAME)
                         .build()
@@ -265,5 +300,28 @@ public class MilvusService {
         System.out.println("Load Collection Complete.");
 
     }
+
+    /** 將 float[] 轉換為 List<Float> */
+    private List<Float> convertArrayToList(float[] array) {
+        List<Float> list = new ArrayList<>();
+        for (float value : array) {
+            list.add(value);
+        }
+        return list;
+    }
+
+    private float[] combineVectors(float[] vector1, float[] vector2, float[] vector3, float[] vector4) {
+        int length = vector1.length + vector2.length + vector3.length + vector4.length;
+        float[] combinedVector = new float[length];
+
+        // 將每個向量的值複製到合併的向量中
+        System.arraycopy(vector1, 0, combinedVector, 0, vector1.length);
+        System.arraycopy(vector2, 0, combinedVector, vector1.length, vector2.length);
+        System.arraycopy(vector3, 0, combinedVector, vector1.length + vector2.length, vector3.length);
+        System.arraycopy(vector3, 0, combinedVector, vector1.length + vector3.length, vector4.length);
+
+        return combinedVector;
+    }
+
 
 }
