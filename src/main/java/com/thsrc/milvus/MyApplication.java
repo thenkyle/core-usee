@@ -31,6 +31,6 @@ public class MyApplication implements CommandLineRunner {
         milvusService.insertData();
         milvusService.buildIndex();
         milvusService.loadCollection();
-//        milvusService.search();
+        milvusService.search();
     }
 }

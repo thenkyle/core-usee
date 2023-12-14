@@ -1,7 +1,6 @@
 package com.thsrc.milvus.services;
 
 import com.thsrc.milvus.utils.PushMaterialConfig;
-import io.milvus.client.MilvusClient;
 import io.milvus.client.MilvusServiceClient;
 import io.milvus.grpc.DataType;
 import io.milvus.grpc.SearchResults;
@@ -76,11 +75,11 @@ public class MilvusService {
         loadCollection((MilvusServiceClient) milvusServiceClient);
     }
 
-    public void search() {
+    public List<Long> search() {
         final Integer SEARCH_K = 3;
         final String SEARCH_PARAM = "{\"nprobe\":10}";
         List<String> search_output_fields = Arrays.asList(PushMaterialConfig.Field.CASE_ID);
-        List<List<Float>> search_vectors = Arrays.asList(Arrays.asList(0.1f, 0.2f, 0.3f));
+        List<List<Float>> search_vectors = Arrays.asList(Arrays.asList(0.1f, 0.2f, 0.3f, 0.4f));
 
         SearchParam searchParam = SearchParam.newBuilder()
                 .withCollectionName(PushMaterialConfig.COLLECTION_NAME)
@@ -101,6 +100,7 @@ public class MilvusService {
 //                ReleaseCollectionParam.newBuilder()
 //                        .withCollectionName(PushMaterialConfig.COLLECTION_NAME)
 //                        .build());
+        return (List<Long>) wrapperSearch.getFieldData(PushMaterialConfig.Field.CASE_ID, 0);
     }
 
     /**建立Collection所需參數*/
@@ -132,7 +132,7 @@ public class MilvusService {
         FieldType fieldType6 = FieldType.newBuilder()
                 .withName(PushMaterialConfig.Field.CASE_VECTOR)
                 .withDataType(DataType.FloatVector)
-                .withDimension(400)
+                .withDimension(4)
                 .build();
 
         CreateCollectionParam createCollectionReq = CreateCollectionParam.newBuilder()
@@ -204,22 +204,22 @@ public class MilvusService {
             System.out.println(profiles);
 
             // 使用 VectorizationService 計算向量
-            float[] actionVector = vectorizationSvc.getFieldVector(action);
-            float[] departureVector = vectorizationSvc.getFieldVector(departureStation);
-            float[] arrivalVector = vectorizationSvc.getFieldVector(arrivalStation);
-            float[] profileVector = vectorizationSvc.getFieldVector(profiles);
+//            float[] actionVector = vectorizationSvc.getFieldVector(action);
+//            float[] departureVector = vectorizationSvc.getFieldVector(departureStation);
+//            float[] arrivalVector = vectorizationSvc.getFieldVector(arrivalStation);
+//            float[] profileVector = vectorizationSvc.getFieldVector(profiles);
 
 
             // 將4個向量合併為一個
-            float[] combinedVector = combineVectors(actionVector, departureVector, arrivalVector, profileVector);
+//            float[] combinedVector = combineVectors(actionVector, departureVector, arrivalVector, profileVector);
             // 將合併的向量轉換為 List<Float> 並添加到 case_vector_array
-            case_vector_array.add(convertArrayToList(combinedVector));
-//            List<Float> vector = new ArrayList<>();
-//            for (int k = 0; k < 3; ++k) {
-//                vector.add(ran.nextFloat());
-//            }
+//            case_vector_array.add(convertArrayToList(combinedVector));
+            List<Float> vector = new ArrayList<>();
+            for (int k = 0; k < 4; ++k) {
+                vector.add(ran.nextFloat());
+            }
 //            System.out.println("vector:"+vector);
-//            case_vector_array.add(vector);
+            case_vector_array.add(vector);
             index++;
         }
 
